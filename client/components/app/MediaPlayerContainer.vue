@@ -53,6 +53,7 @@
       @showBookmarks="showBookmarks"
       @showSleepTimer="showSleepTimerModal = true"
       @showPlayerQueueItems="showPlayerQueueItemsModal = true"
+      @showListenParty="showListenPartyModal"
     />
 
     <modals-bookmarks-modal v-model="showBookmarksModal" :bookmarks="bookmarks" :current-time="bookmarkCurrentTime" :playback-rate="currentPlaybackRate" :library-item-id="libraryItemId" @select="selectBookmark" />
@@ -86,7 +87,9 @@ export default {
       currentPlaybackRate: 1,
       syncFailedToast: null,
       coverAspectRatio: 1,
-      lastChapterId: null
+      lastChapterId: null,
+      lastPartyUpdateAt: null,
+      isApplyingPartyUpdate: false
     }
   },
   computed: {
@@ -120,6 +123,15 @@ export default {
     },
     streamLibraryItem() {
       return this.$store.state.streamLibraryItem
+    },
+    activeParty() {
+      return this.$store.state.listenParty.activeParty
+    },
+    isInListenParty() {
+      return this.$store.getters['listenParty/isInParty']
+    },
+    listenPartyLastActionId() {
+      return this.$store.state.listenParty.lastActionId
     },
     streamEpisode() {
       if (!this.$store.state.streamEpisodeId) return null
@@ -180,7 +192,81 @@ export default {
       return this.$store.state.playerQueueItems || []
     }
   },
+  watch: {
+    activeParty: {
+      deep: true,
+      handler(party) {
+        this.applyListenPartyUpdate(party)
+      }
+    }
+  },
   methods: {
+    showListenPartyModal() {
+      const context = this.libraryItemId
+        ? {
+            libraryItemId: this.libraryItemId,
+            episodeId: this.$store.state.streamEpisodeId || null,
+            position: this.playerHandler.getCurrentTime(),
+            isPlaying: this.isPlaying,
+            playbackRate: this.currentPlaybackRate,
+            displayTitle: this.title
+          }
+        : null
+      this.$store.commit('listenParty/setCreateContext', context)
+      this.$store.commit('listenParty/setShowModal', true)
+    },
+    sendListenPartyAction(actionType, data = {}) {
+      if (!this.isInListenParty || this.isApplyingPartyUpdate || !this.activeParty?.id) return
+      this.$store.dispatch('listenParty/sendAction', {
+        partyId: this.activeParty.id,
+        actionType,
+        ...data
+      })
+    },
+    getPartyTargetTime(partyState) {
+      if (!partyState) return 0
+      if (!partyState.isPlaying) return partyState.position || 0
+      const elapsed = Math.max(0, (Date.now() - partyState.serverTime) / 1000)
+      return (partyState.position || 0) + elapsed * (partyState.playbackRate || 1)
+    },
+    async applyListenPartyUpdate(party) {
+      if (!party?.state || !this.isInListenParty) return
+      const actionId = party.state.actionId
+      if (actionId && actionId === this.listenPartyLastActionId) return
+      const updatedAt = party.updatedAt || party.state.updatedAt
+      if (updatedAt && this.lastPartyUpdateAt === updatedAt) return
+
+      this.lastPartyUpdateAt = updatedAt
+      this.isApplyingPartyUpdate = true
+
+      const targetTime = this.getPartyTargetTime(party.state)
+      const needsLoad = this.libraryItemId !== party.libraryItemId || this.$store.state.streamEpisodeId !== party.episodeId
+
+      if (needsLoad) {
+        await this.playLibraryItem({
+          libraryItemId: party.libraryItemId,
+          episodeId: party.episodeId,
+          startTime: targetTime,
+          playWhenReady: party.state.isPlaying,
+          queueItems: []
+        })
+      }
+
+      if (this.playerHandler) {
+        const currentTime = this.playerHandler.getCurrentTime()
+        if (Math.abs(currentTime - targetTime) > 0.8) {
+          this.playerHandler.seek(targetTime, false)
+        }
+        this.playerHandler.setPlaybackRate(party.state.playbackRate || 1)
+        if (party.state.isPlaying) {
+          this.playerHandler.play()
+        } else {
+          this.playerHandler.pause()
+        }
+      }
+
+      this.isApplyingPartyUpdate = false
+    },
     mediaFinished(libraryItemId, episodeId) {
       // Play next item in queue
       if (!this.playerQueueItems.length || !this.$store.state.playerQueueAutoPlay) {
@@ -277,22 +363,41 @@ export default {
       this.sleepTimerRemaining = Math.max(0, this.sleepTimerRemaining - amount)
     },
     playPause() {
+      if (this.isInListenParty) {
+        this.sendListenPartyAction(this.isPlaying ? 'pause' : 'play', {
+          position: this.playerHandler.getCurrentTime()
+        })
+      }
       this.playerHandler.playPause()
     },
     jumpForward() {
-      this.playerHandler.jumpForward()
+      if (!this.playerHandler) return
+      const currentTime = this.playerHandler.getCurrentTime()
+      const jumpAmount = this.playerHandler.jumpForwardAmount || this.$store.getters['user/getUserSetting']('jumpForwardAmount')
+      const newTime = Math.min(currentTime + jumpAmount, this.playerHandler.getDuration())
+      this.seek(newTime)
     },
     jumpBackward() {
-      this.playerHandler.jumpBackward()
+      if (!this.playerHandler) return
+      const currentTime = this.playerHandler.getCurrentTime()
+      const jumpAmount = this.playerHandler.jumpBackwardAmount || this.$store.getters['user/getUserSetting']('jumpBackwardAmount')
+      const newTime = Math.max(0, currentTime - jumpAmount)
+      this.seek(newTime)
     },
     setVolume(volume) {
       this.playerHandler.setVolume(volume)
     },
     setPlaybackRate(playbackRate) {
       this.currentPlaybackRate = playbackRate
+      if (this.isInListenParty) {
+        this.sendListenPartyAction('rate', { playbackRate })
+      }
       this.playerHandler.setPlaybackRate(playbackRate)
     },
     seek(time) {
+      if (this.isInListenParty) {
+        this.sendListenPartyAction('seek', { position: time })
+      }
       this.playerHandler.seek(time)
     },
     playbackTimeUpdate(time) {
@@ -334,28 +439,37 @@ export default {
     },
     mediaSessionPlay() {
       console.log('Media session play')
+      if (this.isInListenParty) {
+        this.sendListenPartyAction('play', { position: this.playerHandler.getCurrentTime() })
+      }
       this.playerHandler.play()
     },
     mediaSessionPause() {
       console.log('Media session pause')
+      if (this.isInListenParty) {
+        this.sendListenPartyAction('pause', { position: this.playerHandler.getCurrentTime() })
+      }
       this.playerHandler.pause()
     },
     mediaSessionStop() {
       console.log('Media session stop')
+      if (this.isInListenParty) {
+        this.sendListenPartyAction('pause', { position: this.playerHandler.getCurrentTime() })
+      }
       this.playerHandler.pause()
     },
     mediaSessionSeekBackward() {
       console.log('Media session seek backward')
-      this.playerHandler.jumpBackward()
+      this.jumpBackward()
     },
     mediaSessionSeekForward() {
       console.log('Media session seek forward')
-      this.playerHandler.jumpForward()
+      this.jumpForward()
     },
     mediaSessionSeekTo(e) {
       console.log('Media session seek to', e)
       if (e.seekTime !== null && !isNaN(e.seekTime)) {
-        this.playerHandler.seek(e.seekTime)
+        this.seek(e.seekTime)
       }
     },
     mediaSessionPreviousTrack() {
@@ -500,12 +614,16 @@ export default {
     async playLibraryItem(payload) {
       const libraryItemId = payload.libraryItemId
       const episodeId = payload.episodeId || null
+      const playWhenReady = payload.playWhenReady !== false
 
       if (this.playerHandler.libraryItemId == libraryItemId && this.playerHandler.episodeId == episodeId) {
         if (payload.startTime !== null && !isNaN(payload.startTime)) {
           this.seek(payload.startTime)
-        } else {
+        }
+        if (playWhenReady) {
           this.playerHandler.play()
+        } else {
+          this.playerHandler.pause()
         }
         return
       }
@@ -528,7 +646,7 @@ export default {
         if (this.$refs.audioPlayer) this.$refs.audioPlayer.checkUpdateChapterTrack()
       })
 
-      this.playerHandler.load(libraryItem, episodeId, true, this.currentPlaybackRate, payload.startTime)
+      this.playerHandler.load(libraryItem, episodeId, playWhenReady, this.currentPlaybackRate, payload.startTime)
     },
     pauseItem() {
       this.playerHandler.pause()

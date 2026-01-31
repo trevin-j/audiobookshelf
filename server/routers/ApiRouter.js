@@ -35,6 +35,7 @@ const MiscController = require('../controllers/MiscController')
 const ShareController = require('../controllers/ShareController')
 const StatsController = require('../controllers/StatsController')
 const ApiKeyController = require('../controllers/ApiKeyController')
+const ListenPartyController = require('../controllers/ListenPartyController')
 
 class ApiRouter {
   constructor(Server) {
@@ -55,6 +56,7 @@ class ApiRouter {
     /** @type {import('../managers/EmailManager')} */
     this.emailManager = Server.emailManager
     this.apiCacheManager = Server.apiCacheManager
+    this.listenPartyManager = Server.listenPartyManager
 
     this.router = express()
     this.router.disable('x-powered-by')
@@ -236,6 +238,16 @@ class ApiRouter {
     this.router.get('/session/:id', SessionController.openSessionMiddleware.bind(this), SessionController.getOpenSession.bind(this))
     this.router.post('/session/:id/sync', SessionController.openSessionMiddleware.bind(this), SessionController.sync.bind(this))
     this.router.post('/session/:id/close', SessionController.openSessionMiddleware.bind(this), SessionController.close.bind(this))
+
+    // Listen Party Routes
+    this.router.get('/listen-parties/invites', ListenPartyController.getInvites.bind(this))
+    this.router.get('/listen-parties/invitees/:libraryItemId', ListenPartyController.getInvitees.bind(this))
+    this.router.post('/listen-parties', ListenPartyController.createParty.bind(this))
+    this.router.post('/listen-parties/:id/join', ListenPartyController.joinParty.bind(this))
+    this.router.post('/listen-parties/:id/leave', ListenPartyController.leaveParty.bind(this))
+    this.router.post('/listen-parties/:id/action', ListenPartyController.action.bind(this))
+    this.router.post('/listen-parties/:id/invite', ListenPartyController.invite.bind(this))
+    this.router.post('/listen-parties/:id/kick', ListenPartyController.kick.bind(this))
 
     //
     // Podcast Routes

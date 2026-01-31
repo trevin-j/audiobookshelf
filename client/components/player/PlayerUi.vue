@@ -36,6 +36,12 @@
           </button>
         </ui-tooltip>
 
+        <ui-tooltip direction="top" :text="$strings.ButtonListenParty">
+          <button :aria-label="$strings.ButtonListenParty" class="outline-hidden text-gray-300 mx-1 lg:mx-2 hover:text-white" @mousedown.prevent @mouseup.prevent @click.stop="$emit('showListenParty')">
+            <span class="material-symbols text-2xl">groups</span>
+          </button>
+        </ui-tooltip>
+
         <ui-tooltip direction="top" :text="$strings.LabelViewPlayerSettings">
           <button :aria-label="$strings.LabelViewPlayerSettings" class="outline-hidden text-gray-300 mx-1 lg:mx-2 hover:text-white" @mousedown.prevent @mouseup.prevent @click.stop="showPlayerSettings">
             <span class="material-symbols text-2xl sm:text-2.5xl">settings_slow_motion</span>

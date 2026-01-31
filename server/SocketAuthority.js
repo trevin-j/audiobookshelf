@@ -210,6 +210,13 @@ class SocketAuthority {
             this.cancelSocketCoverSearches(socket.id)
 
             delete this.clients[socket.id]
+
+            if (this.Server?.listenPartyManager) {
+              const remainingClients = this.getClientsForUser(_client.user.id)
+              if (!remainingClients.length) {
+                this.Server.listenPartyManager.handleUserDisconnected(_client.user.id)
+              }
+            }
           }
         })
 

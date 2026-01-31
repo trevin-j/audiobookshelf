@@ -52,6 +52,17 @@
         <div v-show="isPlaylistsPage" class="h-full w-0.5 bg-yellow-400 absolute top-0 left-0" />
       </nuxt-link>
 
+      <nuxt-link v-if="showListenParty" to="/listen-party" class="w-full h-20 flex flex-col items-center justify-center text-white/80 border-b border-primary/70 hover:bg-primary cursor-pointer relative" :class="listenPartyIsActive || isListenPartyPage ? 'bg-primary/80' : 'bg-bg/60'">
+        <span class="material-symbols text-2xl">groups</span>
+
+        <p class="pt-1 text-center leading-4" style="font-size: 0.9rem">{{ $strings.ButtonListenParty }}</p>
+
+        <div v-show="listenPartyIsActive || isListenPartyPage" class="h-full w-0.5 bg-yellow-400 absolute top-0 left-0" />
+        <div v-if="listenPartyHasInvites" class="absolute top-1 right-1 w-4 h-4 rounded-full bg-warning/80 flex items-center justify-center">
+          <p class="text-xs font-mono pb-0.5">{{ listenPartyInviteCount }}</p>
+        </div>
+      </nuxt-link>
+
       <nuxt-link v-if="isBookLibrary" :to="`/library/${currentLibraryId}/bookshelf/authors`" class="w-full h-20 flex flex-col items-center justify-center text-white/80 border-b border-primary/70 hover:bg-primary cursor-pointer relative" :class="isAuthorsPage ? 'bg-primary/80' : 'bg-bg/60'">
         <span class="material-symbols text-2xl">groups</span>
 
@@ -210,6 +221,21 @@ export default {
     },
     showPlaylists() {
       return this.$store.state.libraries.numUserPlaylists > 0
+    },
+    listenPartyHasInvites() {
+      return this.$store.getters['listenParty/hasInvites']
+    },
+    listenPartyInviteCount() {
+      return this.$store.state.listenParty.invites?.length || 0
+    },
+    listenPartyIsActive() {
+      return this.$store.getters['listenParty/isInParty']
+    },
+    isListenPartyPage() {
+      return this.$route.name === 'listen-party'
+    },
+    showListenParty() {
+      return true
     }
   },
   methods: {

@@ -21,6 +21,7 @@
     <modals-rssfeed-open-close-modal />
     <modals-raw-cover-preview-modal />
     <modals-share-modal />
+    <modals-listen-party-modal />
     <prompt-confirm />
     <readers-reader />
   </div>
@@ -379,6 +380,15 @@ export default {
       // Refresh providers cache
       this.$store.dispatch('scanners/refreshProviders')
     },
+    listenPartyInvite(payload) {
+      this.$store.dispatch('listenParty/handleInvite', payload)
+    },
+    listenPartyUpdated(payload) {
+      this.$store.dispatch('listenParty/handlePartyUpdated', payload)
+    },
+    listenPartyClosed(payload) {
+      this.$store.dispatch('listenParty/handlePartyClosed', payload)
+    },
     initializeSocket() {
       if (this.$root.socket) {
         // Can happen in dev due to hot reload
@@ -477,6 +487,11 @@ export default {
       // Custom metadata provider Listeners
       this.socket.on('custom_metadata_provider_added', this.customMetadataProviderAdded)
       this.socket.on('custom_metadata_provider_removed', this.customMetadataProviderRemoved)
+
+      // Listen Party Listeners
+      this.socket.on('listen_party_invite', this.listenPartyInvite)
+      this.socket.on('listen_party_updated', this.listenPartyUpdated)
+      this.socket.on('listen_party_closed', this.listenPartyClosed)
     },
     showUpdateToast(versionData) {
       var ignoreVersion = localStorage.getItem('ignoreVersion')
@@ -619,6 +634,8 @@ export default {
     this.checkVersionUpdate()
 
     this.loadTasks()
+
+    this.$store.dispatch('listenParty/loadInvites')
 
     if (this.$route.query.error) {
       this.$toast.error(this.$route.query.error)
